@@ -1,0 +1,37 @@
+name: Daily data update
+
+# Refreshes a rolling window of recent days for every source (NLDC + 5 RLDCs +
+# IEX DAM/RTM) and upserts into Supabase, then refreshes the mv_iex_daily view.
+# Free alternative to a paid cron host — runs on GitHub-hosted runners.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC = 08:30 IST, after the morning PSP reports
+  workflow_dispatch: {}     # adds a "Run workflow" button for manual/test runs
+
+# Avoid overlapping runs if one is slow.
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r scripts/cron/requirements.txt
+
+      - name: Run daily update
+        env:
+          SUPABASE_URL: https://ltzulzadxqpwvfksmcfa.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_DAYS: "4"
+        run: python scripts/cron/daily_update.py
