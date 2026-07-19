@@ -33,8 +33,8 @@ export default function GenerationPage() {
     <>
       <div className="page-head">
         <div><h1>Generation mix &amp; outages</h1>
-          <div className="sub">Source-wise energy met and generation outage, region-wise</div></div>
-        <span className="badge">Report day: {src.day}</span>
+          <div className="sub">Source-wise energy met and generation outage, region-wise · national feed, latest available</div></div>
+        <span className="badge">As of {src.day}</span>
       </div>
 
       <Card title="Source-wise generation by region (energy met, MU)">

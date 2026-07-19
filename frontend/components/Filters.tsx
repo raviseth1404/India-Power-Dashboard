@@ -1,7 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { RegionCode } from "@/lib/units";
-import { latestDate } from "@/lib/queries";
 
 type Filters = {
   date: string;
@@ -19,15 +18,15 @@ export const useFilters = () => {
 };
 
 export function FiltersProvider({ children }: { children: ReactNode }) {
+  // Default to today; every query falls back to the latest available day <= this,
+  // so the current 24/7 feeds (RLDC + IEX) show without waiting on a lookup.
   const [date, setDate] = useState("");
   const [region, setRegion] = useState<RegionCode>("ALL");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    latestDate().then((d) => {
-      setDate(d);
-      setReady(true);
-    });
+    setDate(new Date().toISOString().slice(0, 10));
+    setReady(true);
   }, []);
 
   return (

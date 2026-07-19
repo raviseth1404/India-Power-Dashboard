@@ -81,6 +81,81 @@ export async function iexDaily(market: Market, from: string, to: string) {
   return data ?? [];
 }
 
+// National snapshot built by summing the 5 RLDC regional feeds (which stay
+// current 24/7). Used instead of NLDC's national row, which can't be fetched
+// from a cloud IP (grid-India blocks datacenters).
+export async function nationalFromRLDC(date: string) {
+  const regions = await Promise.all(
+    (Object.keys(RLDC_TABLE) as Exclude<RegionCode, "ALL">[]).map(async (code) => {
+      const table = `${RLDC_TABLE[code]}_regional_availability`;
+      const { data } = await supabase
+        .from(table)
+        .select(
+          "report_date,evening_peak_demand_met_mw,evening_peak_shortage_mw,offpeak_demand_met_mw,day_energy_demand_met_mu"
+        )
+        .lte("report_date", date)
+        .order("report_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return {
+        code,
+        label: REGIONS.find((r) => r.code === code)!.label,
+        day: (data?.report_date as string) ?? null,
+        demand: data?.evening_peak_demand_met_mw ?? null,
+        shortage: data?.evening_peak_shortage_mw ?? null,
+        offpeak: data?.offpeak_demand_met_mw ?? null,
+        energy: data?.day_energy_demand_met_mu ?? null,
+      };
+    })
+  );
+  const sum = (k: "demand" | "shortage" | "offpeak" | "energy") =>
+    regions.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+  const day = regions.map((r) => r.day).filter(Boolean).sort().reverse()[0] ?? date;
+  return {
+    day,
+    regions,
+    total: { demand: sum("demand"), shortage: sum("shortage"), offpeak: sum("offpeak"), energy: sum("energy") },
+  };
+}
+
+// Regional totals / non-state entities that live in the RLDC state feeds and
+// must be excluded from a "top states" ranking.
+const NON_STATE_EXACT = new Set(["NR", "WR", "ER", "SR", "NER", "REGION", "TOTAL", "ALL INDIA"]);
+const isState = (s: unknown) => {
+  const u = String(s).toUpperCase().trim();
+  if (NON_STATE_EXACT.has(u)) return false;
+  return !(u.includes("ISTS") || u.includes("RAILWAY") || u.includes("BULK CONSUMER"));
+};
+
+// Top states by max demand met, merged across the 5 RLDC state feeds.
+export async function stateMaxDemandRLDC(date: string, limit = 15) {
+  const per = await Promise.all(
+    (Object.keys(RLDC_TABLE) as Exclude<RegionCode, "ALL">[]).map(async (code) => {
+      const table = `${RLDC_TABLE[code]}_state_demand`;
+      const { data: d } = await supabase
+        .from(table)
+        .select("report_date")
+        .lte("report_date", date)
+        .order("report_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const day = (d?.report_date as string) ?? date;
+      const { data } = await supabase
+        .from(table)
+        .select("state_canonical,max_demand_met_mw,shortage_at_max_demand_mw")
+        .eq("report_date", day)
+        .not("max_demand_met_mw", "is", null);
+      const label = REGIONS.find((r) => r.code === code)!.label;
+      return (data ?? []).filter((x) => isState(x.state_canonical)).map((x) => ({ ...x, region: label }));
+    })
+  );
+  const rows = per
+    .flat()
+    .sort((a, b) => Number(b.max_demand_met_mw) - Number(a.max_demand_met_mw))
+    .slice(0, limit);
+  return { rows };
+}
+
 // Region evening-peak vs off-peak for one day, from each RLDC table.
 export async function regionPeakOffpeak(date: string) {
   const rows = await Promise.all(

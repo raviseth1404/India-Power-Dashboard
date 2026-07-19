@@ -3,69 +3,65 @@ import { useEffect, useState } from "react";
 import { useFilters } from "@/components/Filters";
 import { Kpi, Card, Legend, Loading, Empty } from "@/components/ui";
 import { LineChart } from "@/components/charts";
-import { regionalSnapshot, intraday, iexDaily, RegionalRow } from "@/lib/queries";
-import { REGIONS, fmtGW, fmtMU, fmtMW, fmtRs, C } from "@/lib/units";
+import { nationalFromRLDC, intraday, iexDaily } from "@/lib/queries";
+import { fmtGW, fmtMU, fmtMW, fmtRs, C } from "@/lib/units";
 
 export default function Overview() {
   const { date, ready } = useFilters();
   const [loading, setLoading] = useState(true);
-  const [regions, setRegions] = useState<RegionalRow[]>([]);
+  const [nat, setNat] = useState<Awaited<ReturnType<typeof nationalFromRLDC>> | null>(null);
   const [dam, setDam] = useState<any[]>([]);
   const [rtm, setRtm] = useState<any[]>([]);
-  const [mcp, setMcp] = useState<{ avg?: number; sum?: number } | null>(null);
+  const [dmcp, setDmcp] = useState<number | undefined>();
+  const [rmcp, setRmcp] = useState<number | undefined>();
 
   useEffect(() => {
     if (!ready || !date) return;
     setLoading(true);
     Promise.all([
-      regionalSnapshot(date),
+      nationalFromRLDC(date),
       intraday("dam", date),
       intraday("rtm", date),
       iexDaily("dam", date, date),
-    ]).then(([reg, d, r, daily]) => {
-      setRegions(reg);
-      setDam(d);
-      setRtm(r);
-      setMcp(daily[0] ? { avg: daily[0].avg_mcp, sum: daily[0].sum_mcv_mw } : null);
+      iexDaily("rtm", date, date),
+    ]).then(([n, d, r, dd, rr]) => {
+      setNat(n); setDam(d); setRtm(r);
+      setDmcp(dd[0]?.avg_mcp); setRmcp(rr[0]?.avg_mcp);
       setLoading(false);
     });
   }, [date, ready]);
 
-  if (loading) return <Loading />;
-  const total = regions.find((r) => r.region === "TOTAL");
-  const day = total?.report_date ?? date;
-  const byRegion = REGIONS.filter((r) => r.code !== "ALL").map((r) => ({
-    ...r, row: regions.find((x) => x.region === r.code),
-  }));
+  if (loading || !nat) return <Loading />;
+  const t = nat.total;
   const labels = (dam.length ? dam : rtm).map((b) => (b.time_block ?? "").slice(0, 5));
-  const shortPct = total?.demand_met_evening_peak_mw
-    ? (((total.peak_shortage_mw ?? 0) / (total.demand_met_evening_peak_mw + (total.peak_shortage_mw ?? 0))) * 100).toFixed(2) + "% of demand"
+  const shortPct = t.demand
+    ? `${((t.shortage / (t.demand + t.shortage)) * 100).toFixed(2)}% of demand`
     : undefined;
 
   return (
     <>
       <div className="page-head">
         <div><h1>National overview</h1><div className="sub">Supply position &amp; market snapshot</div></div>
-        <span className="badge">Report day: {day}</span>
+        <span className="badge">Report day: {nat.day}</span>
       </div>
 
       <div className="grid kpis mb">
-        <Kpi label="Peak demand met" value={fmtGW(total?.demand_met_evening_peak_mw)} note="evening peak" />
-        <Kpi label="Energy met" value={fmtMU(total?.energy_met_mu)} note="over the day" />
-        <Kpi label="Peak shortage" value={fmtMW(total?.peak_shortage_mw)}
-          tone={(total?.peak_shortage_mw ?? 0) > 0 ? "down" : "up"} note={shortPct} />
-        <Kpi label="Avg DAM price" value={fmtRs(mcp?.avg)} note="per MWh" />
-        <Kpi label="Solar + wind gen" value={fmtMU((total?.solar_gen_mu ?? 0) + (total?.wind_gen_mu ?? 0))} note="renewable energy met" />
+        <Kpi label="Peak demand met" value={fmtGW(t.demand)} note="evening peak · all-India" />
+        <Kpi label="Energy met" value={fmtMU(t.energy)} note="over the day" />
+        <Kpi label="Peak shortage" value={fmtMW(t.shortage)}
+          tone={t.shortage > 0 ? "down" : "up"} note={shortPct} />
+        <Kpi label="Avg DAM price" value={fmtRs(dmcp)} note="per MWh" />
+        <Kpi label="Avg RTM price" value={fmtRs(rmcp)} note="per MWh" />
       </div>
 
       <Card title="Region-wise demand met & shortage">
         <div className="grid strip">
-          {byRegion.map((r) => (
+          {nat.regions.map((r) => (
             <div className="mini" key={r.code}>
               <div className="r">{r.label}</div>
-              <div className="v">{fmtGW(r.row?.demand_met_evening_peak_mw)}</div>
-              <div className="s" style={{ color: (r.row?.peak_shortage_mw ?? 0) > 0 ? "var(--danger)" : "var(--success)" }}>
-                {(r.row?.peak_shortage_mw ?? 0) > 0 ? `−${fmtMW(r.row?.peak_shortage_mw)} short` : "met"}
+              <div className="v">{fmtGW(r.demand)}</div>
+              <div className="s" style={{ color: (Number(r.shortage) || 0) > 0 ? "var(--danger)" : "var(--success)" }}>
+                {(Number(r.shortage) || 0) > 0 ? `−${fmtMW(r.shortage)} short` : "met"}
               </div>
             </div>
           ))}

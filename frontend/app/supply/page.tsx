@@ -3,19 +3,19 @@ import { useEffect, useState } from "react";
 import { useFilters } from "@/components/Filters";
 import { Card, Legend, Loading, Empty } from "@/components/ui";
 import { BarChart } from "@/components/charts";
-import { regionPeakOffpeak, stateMaxDemand } from "@/lib/queries";
-import { fmtGW, fmtMW, fmtMU, C } from "@/lib/units";
+import { regionPeakOffpeak, stateMaxDemandRLDC } from "@/lib/queries";
+import { fmtGW, fmtMW, C } from "@/lib/units";
 
 export default function SupplyPage() {
   const { date, ready } = useFilters();
   const [loading, setLoading] = useState(true);
   const [po, setPo] = useState<any[]>([]);
-  const [states, setStates] = useState<{ day: string; rows: any[] }>({ day: date, rows: [] });
+  const [states, setStates] = useState<{ rows: any[] }>({ rows: [] });
 
   useEffect(() => {
     if (!ready || !date) return;
     setLoading(true);
-    Promise.all([regionPeakOffpeak(date), stateMaxDemand(date, 15)]).then(([p, s]) => {
+    Promise.all([regionPeakOffpeak(date), stateMaxDemandRLDC(date, 15)]).then(([p, s]) => {
       setPo(p); setStates(s); setLoading(false);
     });
   }, [date, ready]);
@@ -27,7 +27,7 @@ export default function SupplyPage() {
       <div className="page-head">
         <div><h1>Supply position — regions &amp; states</h1>
           <div className="sub">Evening peak vs off-peak, and states by maximum demand met</div></div>
-        <span className="badge">State day: {states.day}</span>
+        <span className="badge">Latest available per region</span>
       </div>
 
       <Card title="Region-wise evening peak vs off-peak demand met">
@@ -66,7 +66,7 @@ export default function SupplyPage() {
               <table className="tbl">
                 <thead><tr>
                   <th>State</th><th>Region</th><th className="num">Max demand</th>
-                  <th className="num">Shortage</th><th className="num">Energy met</th>
+                  <th className="num">Shortage</th>
                 </tr></thead>
                 <tbody>
                   {states.rows.map((r) => (
@@ -74,8 +74,7 @@ export default function SupplyPage() {
                       <td>{r.state_canonical}</td>
                       <td className="muted">{r.region}</td>
                       <td className="num">{fmtGW(r.max_demand_met_mw)}</td>
-                      <td className="num">{r.shortage_during_max_demand_mw ? fmtMW(r.shortage_during_max_demand_mw) : "—"}</td>
-                      <td className="num">{fmtMU(r.energy_met_mu)}</td>
+                      <td className="num">{Number(r.shortage_at_max_demand_mw) ? fmtMW(r.shortage_at_max_demand_mw) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
