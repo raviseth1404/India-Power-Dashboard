@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# npm 11 lockfile breaks Vercel git builds; resolve fresh from package.json
+/package-lock.json
