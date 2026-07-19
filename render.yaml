@@ -1,0 +1,19 @@
+# Render Blueprint — daily incremental updater for the dashboard.
+# Deploy: push this repo to GitHub, then in Render: New > Blueprint > pick repo.
+# Set SUPABASE_SERVICE_ROLE_KEY in the service's Environment (Supabase >
+# Settings > API > service_role). Never expose that key in the frontend.
+services:
+  - type: cron
+    name: dashboard-daily-update
+    runtime: python
+    # 03:00 UTC = 08:30 IST daily — after that morning's PSP reports are up.
+    schedule: "0 3 * * *"
+    buildCommand: pip install -r scripts/cron/requirements.txt
+    startCommand: python scripts/cron/daily_update.py
+    envVars:
+      - key: SUPABASE_URL
+        value: https://ltzulzadxqpwvfksmcfa.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CRON_DAYS
+        value: "4"

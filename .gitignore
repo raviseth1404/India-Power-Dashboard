@@ -1,0 +1,33 @@
+# --- secrets / env ---
+.env
+.env.local
+.env.*.local
+*.key
+service_role*.txt
+
+# --- OS ---
+.DS_Store
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Node / Next.js (frontend has its own .gitignore too) ---
+node_modules/
+.next/
+out/
+frontend/.env*.local
+
+# --- large regenerable data (re-fetchable; not source) ---
+*.xlsx
+scripts/**/*.jsonl
+scripts/**/*.log
+scripts/**/*_stdout.log
+scripts/**/*_failed*.json
+scripts/**/backfill.log
+
+# --- misc ---
+*.tmp
+.claude/
