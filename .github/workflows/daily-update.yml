@@ -5,9 +5,11 @@ name: Daily data update
 # Free alternative to a paid cron host — runs on GitHub-hosted runners.
 
 on:
-  schedule:
-    - cron: "0 3 * * *"   # 03:00 UTC = 08:30 IST, after the morning PSP reports
-  workflow_dispatch: {}     # adds a "Run workflow" button for manual/test runs
+  # NOTE: schedule disabled — GitHub's US-hosted runners are blocked by the
+  # Indian government RLDC servers (connection reset / read timeout). The daily
+  # update must run from an India IP (see scripts/cron/README). Kept for manual
+  # runs only; a self-hosted India runner could re-enable schedule here.
+  workflow_dispatch: {}
 
 # Avoid overlapping runs if one is slow.
 concurrency:
