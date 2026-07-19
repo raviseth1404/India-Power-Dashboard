@@ -26,8 +26,35 @@ from datetime import date, datetime, timedelta, timezone
 
 import requests
 import pdfplumber
+import ssl
+from requests.adapters import HTTPAdapter
+
+try:
+    from urllib3.util.ssl_ import create_urllib3_context
+except Exception:  # older urllib3 layout
+    from urllib3.util import create_urllib3_context  # type: ignore
 
 requests.packages.urllib3.disable_warnings()
+
+
+class _LegacyTLSAdapter(HTTPAdapter):
+    """Some of the old govt TLS servers (erldc.in, srldc.in) require legacy
+    SSL renegotiation, which OpenSSL 3 (Ubuntu 24.04) refuses by default with
+    'UNSAFE_LEGACY_RENEGOTIATION_DISABLED'. Re-enable it (and skip cert checks,
+    as several of these hosts have broken chains anyway)."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0x4)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
+# Session used for ALL upstream data fetches (not for Supabase writes).
+_HTTP = requests.Session()
+_HTTP.mount("https://", _LegacyTLSAdapter())
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.dirname(HERE)
@@ -91,12 +118,13 @@ def _json(obj):
 
 
 def http(url, verify=False, headers=None, method="GET", json_body=None):
+    # verify kept for call-site compatibility; the _HTTP adapter handles TLS.
     for attempt in range(3):
         try:
             if method == "POST":
-                r = requests.post(url, json=json_body, headers=headers, timeout=60, verify=verify)
+                r = _HTTP.post(url, json=json_body, headers=headers, timeout=60)
             else:
-                r = requests.get(url, headers=headers, timeout=60, verify=verify)
+                r = _HTTP.get(url, headers=headers, timeout=60)
             return r
         except Exception as e:
             if attempt == 2:
