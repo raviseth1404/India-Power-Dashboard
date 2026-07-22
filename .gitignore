@@ -31,3 +31,4 @@ scripts/**/backfill.log
 # --- misc ---
 *.tmp
 .claude/
+backtest_predictions.csv
