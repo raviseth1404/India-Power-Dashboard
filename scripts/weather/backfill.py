@@ -60,12 +60,25 @@ def fetch_city(city, lat, lon):
     url = ("https://archive-api.open-meteo.com/v1/archive"
            f"?latitude={lat}&longitude={lon}&start_date={START}&end_date={END}"
            f"&daily={DAILY_VARS}&timezone=Asia%2FKolkata")
-    for attempt in range(4):
+    for attempt in range(8):
         r = requests.get(url, timeout=120)
         if r.status_code == 200:
             return r.json()["daily"]
+        if r.status_code == 429:  # minutely quota — long archive calls are weighted
+            print(f"{city}: rate-limited, waiting 65s…", flush=True)
+            time.sleep(65)
+            continue
         time.sleep(5 * (attempt + 1))
     raise RuntimeError(f"{city}: HTTP {r.status_code} {r.text[:200]}")
+
+
+def already_loaded(city):
+    r = requests.get(
+        f"{PROJECT_URL}/rest/v1/weather_daily?city=eq.{city}&select=report_date"
+        f"&order=report_date.desc&limit=1",
+        headers={"apikey": API_KEY, "Authorization": f"Bearer {API_KEY}"}, timeout=30)
+    rows = r.json() if r.status_code == 200 else []
+    return bool(rows) and rows[0]["report_date"] >= END
 
 
 def upsert(rows):
@@ -84,6 +97,9 @@ def upsert(rows):
 def main():
     total = 0
     for city, state, region, lat, lon in CITIES:
+        if already_loaded(city):
+            print(f"{city}: already loaded, skipping", flush=True)
+            continue
         d = fetch_city(city, lat, lon)
         rows = []
         for i, day in enumerate(d["time"]):
