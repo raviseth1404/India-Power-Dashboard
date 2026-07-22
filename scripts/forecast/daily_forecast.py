@@ -99,7 +99,9 @@ def national_weather(day_iso):
     rows = r.json()
     if not rows:
         return None
-    df = pd.DataFrame(rows).apply(pd.to_numeric, errors="ignore")
+    df = pd.DataFrame(rows)
+    for c in ("tmax_c", "tmean_c", "rain_mm", "solar_rad_mj_m2", "wind_max_kmh"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     return {
         "wx_tmax_c": df.tmax_c.mean(), "wx_tmean_c": df.tmean_c.mean(),
         "wx_rain_mm": df.rain_mm.mean(), "wx_solar_mj": df.solar_rad_mj_m2.mean(),
