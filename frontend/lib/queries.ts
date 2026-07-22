@@ -118,6 +118,33 @@ export async function nationalFromRLDC(date: string) {
   };
 }
 
+// Forecast vs actual: dam_forecast joined with realised daily DAM averages.
+export async function forecastSeries(days = 90) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const iso = since.toISOString().slice(0, 10);
+  const [{ data: fc }, { data: act }] = await Promise.all([
+    supabase
+      .from("dam_forecast")
+      .select("forecast_date,p50,p10,p90,model,generated_at")
+      .gte("forecast_date", iso)
+      .order("forecast_date", { ascending: true }),
+    supabase
+      .from("mv_iex_daily")
+      .select("report_date,avg_mcp")
+      .eq("market", "dam")
+      .gte("report_date", iso)
+      .order("report_date", { ascending: true }),
+  ]);
+  const actual = new Map((act ?? []).map((a) => [a.report_date, Number(a.avg_mcp)]));
+  return (fc ?? []).map((f) => ({
+    date: f.forecast_date as string,
+    p50: Number(f.p50), p10: Number(f.p10), p90: Number(f.p90),
+    model: f.model as string,
+    actual: actual.get(f.forecast_date) ?? null,
+  }));
+}
+
 // Regional totals / non-state entities that live in the RLDC state feeds and
 // must be excluded from a "top states" ranking.
 const NON_STATE_EXACT = new Set(["NR", "WR", "ER", "SR", "NER", "REGION", "TOTAL", "ALL INDIA"]);

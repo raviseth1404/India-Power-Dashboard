@@ -9,6 +9,7 @@ const TABS = [
   { href: "/market", label: "Market prices" },
   { href: "/supply", label: "Supply position" },
   { href: "/generation", label: "Generation" },
+  { href: "/forecast", label: "Forecast" },
 ];
 
 export default function TopBar() {
