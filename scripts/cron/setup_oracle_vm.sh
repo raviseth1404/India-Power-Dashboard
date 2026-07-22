@@ -59,10 +59,10 @@ EOF
 
 sudo tee /etc/systemd/system/india-dashboard-update.timer >/dev/null <<EOF
 [Unit]
-Description=Run India Power Dashboard update daily (03:00 UTC / 08:30 IST)
+Description=Run India Power Dashboard update daily (07:00 UTC / 12:30 IST)
 
 [Timer]
-OnCalendar=*-*-* 03:00:00 UTC
+OnCalendar=*-*-* 07:00:00 UTC
 Persistent=true
 
 [Install]
