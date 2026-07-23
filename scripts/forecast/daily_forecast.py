@@ -24,6 +24,8 @@ import requests
 from common import SUPABASE_URL, PARAMS, load_features, engineer
 
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+# Tag distinguishes runs (e.g. lgbm-0830 vs lgbm-1230 A/B) — one row per (date, tag).
+MODEL_TAG = os.environ.get("MODEL_TAG", "lgbm-v1")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 CITIES = [
@@ -141,9 +143,9 @@ def main():
 
     rec = {"forecast_date": target_day.date().isoformat(),
            "p50": round(out["p50"], 2), "p10": round(out["p10"], 2),
-           "p90": round(out["p90"], 2), "model": "lgbm-v1",
+           "p90": round(out["p90"], 2), "model": MODEL_TAG,
            "generated_at": datetime.now(timezone.utc).isoformat()}
-    r = sess.post(f"{SUPABASE_URL}/rest/v1/dam_forecast?on_conflict=forecast_date",
+    r = sess.post(f"{SUPABASE_URL}/rest/v1/dam_forecast?on_conflict=forecast_date,model",
                   data=json.dumps([rec]), timeout=60)
     log(f"forecast {rec['forecast_date']}: P50 ₹{rec['p50']:.0f} "
         f"(P10 {rec['p10']:.0f} – P90 {rec['p90']:.0f}) HTTP {r.status_code}")

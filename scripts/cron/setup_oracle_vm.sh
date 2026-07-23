@@ -42,10 +42,17 @@ if grep -q "PASTE_YOUR_SUPABASE_SECRET_KEY_HERE" "$ENV_FILE"; then
   exit 1
 fi
 
-echo "==> Installing systemd service + timer"
-sudo tee /etc/systemd/system/india-dashboard-update.service >/dev/null <<EOF
+echo "==> Installing systemd services + timers (dual daily runs: 08:30 & 12:30 IST)"
+# Two full runs per day (data update + forecast), tagged so the forecasts land
+# as separate rows — an A/B on fundamentals freshness vs run time:
+#   03:00 UTC = 08:30 IST  -> MODEL_TAG=lgbm-0830 (early, provably pre-bid-close)
+#   07:00 UTC = 12:30 IST  -> MODEL_TAG=lgbm-1230 (fresh PSP outage/demand data)
+for cfg in "0830 03:00:00 lgbm-0830" "1230 07:00:00 lgbm-1230"; do
+  set -- $cfg
+  NAME="india-dashboard-$1"; UTC_TIME=$2; TAG=$3
+  sudo tee /etc/systemd/system/$NAME.service >/dev/null <<EOF
 [Unit]
-Description=India Power Dashboard daily data update
+Description=India Power Dashboard daily run ($1 IST)
 After=network-online.target
 Wants=network-online.target
 
@@ -53,29 +60,31 @@ Wants=network-online.target
 Type=oneshot
 User=$USER
 EnvironmentFile=$ENV_FILE
+Environment=MODEL_TAG=$TAG
 WorkingDirectory=$REPO_DIR
-ExecStart=$VENV/bin/python $REPO_DIR/scripts/cron/daily_update.py
+ExecStart=/usr/bin/bash $REPO_DIR/scripts/cron/run_daily.sh
 EOF
-
-sudo tee /etc/systemd/system/india-dashboard-update.timer >/dev/null <<EOF
+  sudo tee /etc/systemd/system/$NAME.timer >/dev/null <<EOF
 [Unit]
-Description=Run India Power Dashboard update daily (07:00 UTC / 12:30 IST)
+Description=India Power Dashboard daily run at $UTC_TIME UTC
 
 [Timer]
-OnCalendar=*-*-* 07:00:00 UTC
+OnCalendar=*-*-* $UTC_TIME UTC
 Persistent=true
 
 [Install]
 WantedBy=timers.target
 EOF
+done
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now india-dashboard-update.timer
+sudo systemctl disable --now india-dashboard-update.timer 2>/dev/null || true
+sudo systemctl enable --now india-dashboard-0830.timer india-dashboard-1230.timer
 
 echo ""
-echo "==> Done. Timer enabled:"
-systemctl list-timers india-dashboard-update.timer --no-pager || true
+echo "==> Done. Timers enabled:"
+systemctl list-timers 'india-dashboard-*' --no-pager || true
 echo ""
-echo "    Test a run now:   sudo systemctl start india-dashboard-update.service"
-echo "    Watch the logs:   journalctl -u india-dashboard-update -f"
+echo "    Test a run now:   sudo systemctl start india-dashboard-1230.service"
+echo "    Watch the logs:   journalctl -u india-dashboard-1230 -f"
 echo "    Update later:     git -C $REPO_DIR pull   (picks up parser fixes)"

@@ -137,12 +137,21 @@ export async function forecastSeries(days = 90) {
       .order("report_date", { ascending: true }),
   ]);
   const actual = new Map((act ?? []).map((a) => [a.report_date, Number(a.avg_mcp)]));
-  return (fc ?? []).map((f) => ({
-    date: f.forecast_date as string,
-    p50: Number(f.p50), p10: Number(f.p10), p90: Number(f.p90),
-    model: f.model as string,
-    actual: actual.get(f.forecast_date) ?? null,
-  }));
+  // Multiple runs may exist per delivery day (e.g. 08:30 vs 12:30 tags) —
+  // keep the most recently generated one per date for display.
+  const byDate = new Map<string, (typeof fc extends (infer T)[] | null ? T : never)>();
+  for (const f of fc ?? []) {
+    const prev = byDate.get(f.forecast_date);
+    if (!prev || String(f.generated_at) > String(prev.generated_at)) byDate.set(f.forecast_date, f);
+  }
+  return [...byDate.values()]
+    .sort((a, b) => String(a.forecast_date).localeCompare(String(b.forecast_date)))
+    .map((f) => ({
+      date: f.forecast_date as string,
+      p50: Number(f.p50), p10: Number(f.p10), p90: Number(f.p90),
+      model: f.model as string,
+      actual: actual.get(f.forecast_date) ?? null,
+    }));
 }
 
 // Regional totals / non-state entities that live in the RLDC state feeds and
