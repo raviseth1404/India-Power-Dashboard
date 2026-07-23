@@ -68,7 +68,7 @@ def topup_weather():
     for city, state, region, lat, lon in CITIES:
         url = ("https://api.open-meteo.com/v1/forecast"
                f"?latitude={lat}&longitude={lon}&daily={DAILY_VARS}"
-               "&past_days=7&forecast_days=2&timezone=Asia%2FKolkata")
+               "&past_days=7&forecast_days=3&timezone=Asia%2FKolkata")
         for attempt in range(4):
             r = requests.get(url, timeout=60)
             if r.status_code == 200:
