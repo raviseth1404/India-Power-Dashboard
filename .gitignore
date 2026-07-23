@@ -32,3 +32,4 @@ scripts/**/backfill.log
 *.tmp
 .claude/
 backtest_predictions.csv
+challenger_predictions.csv
