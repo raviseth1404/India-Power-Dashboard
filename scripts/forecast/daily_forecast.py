@@ -160,6 +160,18 @@ def main():
 
     ens = float(np.mean([out["lgb"], out["xgb"], out["ets"]]))
     log(f"members: lgb ₹{out['lgb']:.0f} xgb ₹{out['xgb']:.0f} ets ₹{out['ets']:.0f}")
+
+    # Shadow row: keep the standalone LightGBM forecast scored alongside the
+    # ensemble (tag ens-0830 -> lgb-0830) so the two stay comparable daily.
+    shadow = {"forecast_date": target_day.date().isoformat(),
+              "p50": round(float(np.clip(out["lgb"], 0, cap)), 2),
+              "p10": round(float(np.clip(out["p10"], 0, cap)), 2),
+              "p90": round(float(np.clip(out["p90"], 0, cap)), 2),
+              "model": MODEL_TAG.replace("ens", "lgb"),
+              "generated_at": datetime.now(timezone.utc).isoformat()}
+    sess.post(f"{SUPABASE_URL}/rest/v1/dam_forecast?on_conflict=forecast_date,model",
+              data=json.dumps([shadow]), timeout=60)
+
     shift = ens - out["lgb"]  # re-centre LGB's quantile band on the ensemble
     out = {"p50": float(np.clip(ens, 0, cap)),
            "p10": float(np.clip(out["p10"] + shift, 0, cap)),
