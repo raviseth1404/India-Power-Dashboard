@@ -174,6 +174,44 @@ def main():
     log(f"forecast {rec['forecast_date']}: P50 ₹{rec['p50']:.0f} "
         f"(P10 {rec['p10']:.0f} – P90 {rec['p90']:.0f}) HTTP {r.status_code}")
 
+    block_forecast(target_day, out["p50"], cap)
+
+
+def block_forecast(target_day, daily_p50, cap):
+    """96-block curve = daily P50 × recent intraday shape (day-type aware
+    mean of the last 28 days' normalized shapes; blocks average back to P50).
+    Shape-only error ≈ 23% block MAPE — blocks are indicative, the daily
+    level is the calibrated number."""
+    since = (target_day - pd.Timedelta(days=29)).date().isoformat()
+    rows, off = [], 0
+    while True:
+        r = sess.get(f"{SUPABASE_URL}/rest/v1/iex_dam?select=report_date,block,mcp_rs_mwh"
+                     f"&report_date=gte.{since}&order=report_date.asc,block.asc"
+                     f"&offset={off}&limit=1000", timeout=60)
+        chunk = r.json()
+        rows += chunk
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    df = pd.DataFrame(rows)
+    df["mcp_rs_mwh"] = pd.to_numeric(df["mcp_rs_mwh"], errors="coerce")
+    piv = df.pivot(index="report_date", columns="block", values="mcp_rs_mwh").dropna()
+    shape = piv.div(piv.mean(axis=1), axis=0)
+    dtypes_we = pd.to_datetime(shape.index).dayofweek >= 5
+    target_we = target_day.dayofweek >= 5
+    sel = shape[dtypes_we == target_we]
+    est = (sel if len(sel) >= 3 else shape).mean()
+    est = est / est.mean()
+    blocks = np.clip(est.values * daily_p50, 0, cap)
+    recs = [{"forecast_date": target_day.date().isoformat(), "block": int(b),
+             "model": MODEL_TAG, "p50": round(float(v), 2),
+             "generated_at": datetime.now(timezone.utc).isoformat()}
+            for b, v in zip(est.index, blocks)]
+    r = sess.post(f"{SUPABASE_URL}/rest/v1/dam_block_forecast?on_conflict=forecast_date,block,model",
+                  data=json.dumps(recs), timeout=60)
+    log(f"block curve: {len(recs)} blocks, peak ₹{blocks.max():.0f} "
+        f"min ₹{blocks.min():.0f} HTTP {r.status_code}")
+
 
 if __name__ == "__main__":
     main()

@@ -2,17 +2,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Kpi, Card, Legend, Loading, Empty } from "@/components/ui";
 import { LineChart } from "@/components/charts";
-import { forecastSeries } from "@/lib/queries";
+import { forecastSeries, blockForecast } from "@/lib/queries";
 import { fmtRs, C } from "@/lib/units";
 
 const BAND = "rgba(83, 74, 183, 0.18)";
+const blockLabel = (b: number) =>
+  `${String(Math.floor(((b - 1) * 15) / 60)).padStart(2, "0")}:${String(((b - 1) * 15) % 60).padStart(2, "0")}`;
 
 export default function ForecastPage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof forecastSeries>>>([]);
+  const [blocks, setBlocks] = useState<Awaited<ReturnType<typeof blockForecast>>>(null);
 
   useEffect(() => {
-    forecastSeries(90).then((r) => { setRows(r); setLoading(false); });
+    Promise.all([forecastSeries(90), blockForecast()]).then(([r, b]) => {
+      setRows(r); setBlocks(b); setLoading(false);
+    });
   }, []);
 
   const stats = useMemo(() => {
@@ -75,6 +80,33 @@ export default function ForecastPage() {
             scales: { y: { ticks: { callback: (v: any) => "₹" + (Number(v) / 1000) + "k" } }, x: { ticks: { maxTicksLimit: 10 } } },
           }} />
       </Card>
+
+      {blocks && blocks.blocks.length > 0 && (
+        <>
+          <div style={{ height: 14 }} />
+          <Card title={`Intraday shape — 96-block forecast for ${blocks.day}`}>
+            <Legend items={[
+              { color: C.purple, label: `Forecast blocks · ${blocks.day}` },
+              ...(blocks.actualDay ? [{ color: C.dam, label: `Actual blocks · ${blocks.actualDay}` }] : []),
+            ]} />
+            <LineChart height={280}
+              data={{
+                labels: blocks.blocks.map((b) => blockLabel(b.block)),
+                datasets: [
+                  { label: "Forecast", data: blocks.blocks.map((b) => b.p50), borderColor: C.purple, backgroundColor: C.purple, pointRadius: 0, borderWidth: 2, tension: 0.3 },
+                  ...(blocks.actual.length ? [{ label: "Actual", data: blocks.actual.map((a) => a.mcp), borderColor: C.dam, backgroundColor: C.dam, pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: 0.3 } as any] : []),
+                ],
+              }}
+              options={{
+                scales: { y: { ticks: { callback: (v: any) => "₹" + (Number(v) / 1000) + "k" } }, x: { ticks: { maxTicksLimit: 12 } } },
+              }} />
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Block curve = calibrated daily forecast × recent day-type intraday shape. Blocks are
+              indicative (~23% typical block error); the daily average is the calibrated number.
+            </p>
+          </Card>
+        </>
+      )}
 
       <div style={{ height: 12 }} />
       <p className="muted" style={{ fontSize: 12.5 }}>

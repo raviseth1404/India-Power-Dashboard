@@ -154,6 +154,55 @@ export async function forecastSeries(days = 90) {
     }));
 }
 
+// 96-block curve for the latest forecast day, plus the most recent actual
+// day's blocks for visual context.
+export async function blockForecast() {
+  const { data: last } = await supabase
+    .from("dam_block_forecast")
+    .select("forecast_date")
+    .order("forecast_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!last) return null;
+  const day = last.forecast_date as string;
+  const [{ data: fc }, { data: actDay }] = await Promise.all([
+    supabase
+      .from("dam_block_forecast")
+      .select("block,p50,model,generated_at")
+      .eq("forecast_date", day)
+      .order("block", { ascending: true }),
+    supabase
+      .from("iex_dam")
+      .select("report_date")
+      .order("report_date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  // latest tag only (dedupe by generated_at)
+  const byBlock = new Map<number, { p50: number; generated_at: string }>();
+  for (const f of fc ?? []) {
+    const prev = byBlock.get(f.block);
+    if (!prev || String(f.generated_at) > prev.generated_at)
+      byBlock.set(f.block, { p50: Number(f.p50), generated_at: String(f.generated_at) });
+  }
+  let actual: { block: number; mcp: number }[] = [];
+  const actualDay = (actDay?.report_date as string) ?? null;
+  if (actualDay) {
+    const { data: act } = await supabase
+      .from("iex_dam")
+      .select("block,mcp_rs_mwh")
+      .eq("report_date", actualDay)
+      .order("block", { ascending: true });
+    actual = (act ?? []).map((a) => ({ block: a.block as number, mcp: Number(a.mcp_rs_mwh) }));
+  }
+  return {
+    day,
+    actualDay,
+    blocks: [...byBlock.entries()].sort((a, b) => a[0] - b[0]).map(([block, v]) => ({ block, p50: v.p50 })),
+    actual,
+  };
+}
+
 // Regional totals / non-state entities that live in the RLDC state feeds and
 // must be excluded from a "top states" ranking.
 const NON_STATE_EXACT = new Set(["NR", "WR", "ER", "SR", "NER", "REGION", "TOTAL", "ALL INDIA"]);
