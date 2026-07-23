@@ -47,7 +47,7 @@ echo "==> Installing systemd services + timers (dual daily runs: 08:30 & 12:30 I
 # as separate rows — an A/B on fundamentals freshness vs run time:
 #   03:00 UTC = 08:30 IST  -> MODEL_TAG=lgbm-0830 (early, provably pre-bid-close)
 #   07:00 UTC = 12:30 IST  -> MODEL_TAG=lgbm-1230 (fresh PSP outage/demand data)
-for cfg in "0830 03:00:00 lgbm-0830" "1230 07:00:00 lgbm-1230"; do
+for cfg in "0830 03:00:00 ens-0830" "1230 07:00:00 ens-1230"; do
   set -- $cfg
   NAME="india-dashboard-$1"; UTC_TIME=$2; TAG=$3
   sudo tee /etc/systemd/system/$NAME.service >/dev/null <<EOF

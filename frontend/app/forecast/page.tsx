@@ -38,8 +38,8 @@ export default function ForecastPage() {
     <>
       <div className="page-head">
         <div><h1>DAM price forecast</h1>
-          <div className="sub">Day-ahead daily-average MCP · LightGBM on demand, outages, generation mix &amp; weather · retrained daily</div></div>
-        <span className="badge">Model: lgbm-v1</span>
+          <div className="sub">Day-ahead daily-average MCP · ensemble (LightGBM + XGBoost + AutoETS) on demand, outages, generation mix &amp; weather · retrained daily</div></div>
+        <span className="badge">Model: ens-v1</span>
       </div>
 
       <div className="grid kpis mb">

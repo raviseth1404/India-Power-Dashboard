@@ -24,8 +24,8 @@ import requests
 from common import SUPABASE_URL, PARAMS, load_features, engineer
 
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-# Tag distinguishes runs (e.g. lgbm-0830 vs lgbm-1230 A/B) — one row per (date, tag).
-MODEL_TAG = os.environ.get("MODEL_TAG", "lgbm-v1")
+# Tag distinguishes runs (e.g. ens-0830 vs ens-1230 A/B) — one row per (date, tag).
+MODEL_TAG = os.environ.get("MODEL_TAG", "ens-v1")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 CITIES = [
@@ -132,14 +132,38 @@ def main():
 
     X, y = engineer(df)
     train = y.notna()
-    cap = float(X.loc[X.index == target_day, "price_cap"].iloc[0])
+    te = X.index == target_day
+    cap = float(X.loc[te, "price_cap"].iloc[0])
 
+    # --- 3-model ensemble P50 (validated: 8.1% vs 8.2% MAPE over 1,301 days) ---
     out = {}
-    for name, extra in [("p50", {}), ("p10", {"objective": "quantile", "alpha": 0.1}),
+    for name, extra in [("lgb", {}), ("p10", {"objective": "quantile", "alpha": 0.1}),
                         ("p90", {"objective": "quantile", "alpha": 0.9})]:
         m = lgb.LGBMRegressor(**{**PARAMS, **extra})
         m.fit(X[train], y[train])
-        out[name] = float(np.clip(m.predict(X[X.index == target_day])[0], 0, cap))
+        out[name] = float(m.predict(X[te])[0])
+
+    from xgboost import XGBRegressor
+    xgm = XGBRegressor(n_estimators=700, learning_rate=0.04, max_depth=8,
+                       subsample=0.9, colsample_bytree=0.85, reg_lambda=1.0,
+                       objective="reg:absoluteerror", verbosity=0)
+    xgm.fit(X[train].astype(float), y[train])
+    out["xgb"] = float(xgm.predict(X[te].astype(float))[0])
+
+    from statsforecast import StatsForecast
+    from statsforecast.models import AutoETS
+    hist = y[train].sort_index().tail(730)
+    sdf = pd.DataFrame({"unique_id": "dam", "ds": hist.index, "y": hist.values})
+    h = (target_day - hist.index.max()).days
+    sf = StatsForecast(models=[AutoETS(season_length=7)], freq="D")
+    out["ets"] = float(sf.forecast(df=sdf, h=h)["AutoETS"].iloc[-1])
+
+    ens = float(np.mean([out["lgb"], out["xgb"], out["ets"]]))
+    log(f"members: lgb ₹{out['lgb']:.0f} xgb ₹{out['xgb']:.0f} ets ₹{out['ets']:.0f}")
+    shift = ens - out["lgb"]  # re-centre LGB's quantile band on the ensemble
+    out = {"p50": float(np.clip(ens, 0, cap)),
+           "p10": float(np.clip(out["p10"] + shift, 0, cap)),
+           "p90": float(np.clip(out["p90"] + shift, 0, cap))}
 
     rec = {"forecast_date": target_day.date().isoformat(),
            "p50": round(out["p50"], 2), "p10": round(out["p10"], 2),
